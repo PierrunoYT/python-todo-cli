@@ -22,8 +22,8 @@ A feature-rich command-line todo list application written in Python.
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/todo-list-manager.git
-   cd todo-list-manager
+   git clone https://github.com/PierrunoYT/python-todo-cli.git
+   cd python-todo-cli
    ```
 
 2. Install the required library:

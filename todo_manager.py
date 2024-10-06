@@ -1,12 +1,18 @@
 import json
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from enum import Enum
+import re
 
 class Priority(Enum):
     LOW = 1
     MEDIUM = 2
     HIGH = 3
+
+class RecurrenceType(Enum):
+    DAILY = 1
+    WEEKLY = 2
+    MONTHLY = 3
 
 def parse_date(date_string):
     try:
@@ -21,18 +27,22 @@ def load_tasks():
             return json.load(f)
     return []
 
-def save_tasks(tasks):
-    with open('tasks.json', 'w') as f:
+undo_stack = []
+
+def save_tasks(tasks, filename='tasks.json'):
+    with open(filename, 'w') as f:
         json.dump(tasks, f)
 
-def add_task(tasks, description, due_date=None, priority=None, category=None):
+def add_task(tasks, description, due_date=None, priority=None, category=None, recurrence=None):
+    undo_stack.append(tasks.copy())
     task = {
         "description": description,
         "completed": False,
         "created_at": date.today().isoformat(),
         "due_date": due_date.isoformat() if due_date else None,
         "priority": priority.name if priority else None,
-        "category": category
+        "category": category,
+        "recurrence": recurrence.name if recurrence else None
     }
     tasks.append(task)
     print("Task added successfully.")
@@ -58,6 +68,7 @@ def list_tasks(tasks, sort_by=None):
         print(f"{i}. [{status}] {task['description']}{due_date}{priority}{category}")
 
 def complete_task(tasks, index):
+    undo_stack.append(tasks.copy())
     if 1 <= index <= len(tasks):
         tasks[index-1]["completed"] = True
         print("Task marked as completed.")
@@ -65,6 +76,7 @@ def complete_task(tasks, index):
         print("Invalid task number.")
 
 def delete_task(tasks, index):
+    undo_stack.append(tasks.copy())
     if 1 <= index <= len(tasks):
         del tasks[index-1]
         print("Task deleted successfully.")
@@ -72,6 +84,7 @@ def delete_task(tasks, index):
         print("Invalid task number.")
 
 def edit_task(tasks, index):
+    undo_stack.append(tasks.copy())
     if 1 <= index <= len(tasks):
         task = tasks[index-1]
         print(f"Editing task: {task['description']}")
@@ -94,6 +107,10 @@ def edit_task(tasks, index):
         if new_category:
             task['category'] = new_category
 
+        new_recurrence = input("Enter new recurrence (DAILY/WEEKLY/MONTHLY) (or press Enter to keep current): ").upper()
+        if new_recurrence in ('DAILY', 'WEEKLY', 'MONTHLY'):
+            task['recurrence'] = new_recurrence
+
         print("Task updated successfully.")
     else:
         print("Invalid task number.")
@@ -108,14 +125,39 @@ def show_task_details(tasks, index):
         print(f"Due date: {task['due_date'] or 'Not set'}")
         print(f"Priority: {task['priority'] or 'Not set'}")
         print(f"Category: {task['category'] or 'Not set'}")
+        print(f"Recurrence: {task['recurrence'] or 'Not set'}")
     else:
         print("Invalid task number.")
+
+def handle_recurring_tasks(tasks):
+    today = date.today()
+    for task in tasks:
+        if task['recurrence'] and task['due_date']:
+            due_date = datetime.strptime(task['due_date'], "%Y-%m-%d").date()
+            if due_date <= today:
+                if task['recurrence'] == 'DAILY':
+                    new_due_date = today + timedelta(days=1)
+                elif task['recurrence'] == 'WEEKLY':
+                    new_due_date = today + timedelta(weeks=1)
+                elif task['recurrence'] == 'MONTHLY':
+                    new_due_date = today + timedelta(days=30)  # Approximation
+                
+                task['due_date'] = new_due_date.isoformat()
+                task['completed'] = False
+
+def search_tasks(tasks, keyword):
+    matching_tasks = []
+    for i, task in enumerate(tasks, 1):
+        if keyword.lower() in task['description'].lower():
+            matching_tasks.append((i, task))
+    return matching_tasks
 
 def main():
     tasks = load_tasks()
     
     while True:
-        command = input("Enter a command (add/list/complete/delete/edit/details/quit): ").lower()
+        handle_recurring_tasks(tasks)
+        command = input("Enter a command (add/list/complete/delete/edit/details/search/archive/undo/quit): ").lower()
         
         if command == "quit":
             save_tasks(tasks)
@@ -145,6 +187,26 @@ def main():
         elif command == "details":
             index = int(input("Enter task number to show details: "))
             show_task_details(tasks, index)
+        elif command == "search":
+            keyword = input("Enter keyword to search for: ")
+            matching_tasks = search_tasks(tasks, keyword)
+            if matching_tasks:
+                print("Matching tasks:")
+                for i, task in matching_tasks:
+                    print(f"{i}. {task['description']}")
+            else:
+                print("No matching tasks found.")
+        elif command == "archive":
+            archived_tasks = [task for task in tasks if task['completed']]
+            tasks = [task for task in tasks if not task['completed']]
+            save_tasks(archived_tasks, 'archived_tasks.json')
+            print(f"{len(archived_tasks)} completed tasks have been archived.")
+        elif command == "undo":
+            if len(undo_stack) > 0:
+                tasks = undo_stack.pop()
+                print("Last action undone.")
+            else:
+                print("No actions to undo.")
         else:
             print("Invalid command. Please try again.")
 

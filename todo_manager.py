@@ -3,6 +3,7 @@ import os
 from datetime import datetime, date, timedelta
 from enum import Enum
 import re
+from colorama import init, Fore, Style
 
 class Priority(Enum):
     LOW = 1
@@ -13,6 +14,12 @@ class RecurrenceType(Enum):
     DAILY = 1
     WEEKLY = 2
     MONTHLY = 3
+
+# Initialize colorama
+init(autoreset=True)
+
+def colorize(text, color):
+    return f"{color}{text}{Style.RESET_ALL}"
 
 def parse_date(date_string):
     try:
@@ -42,14 +49,15 @@ def add_task(tasks, description, due_date=None, priority=None, category=None, re
         "due_date": due_date.isoformat() if due_date else None,
         "priority": priority.name if priority else None,
         "category": category,
-        "recurrence": recurrence.name if recurrence else None
+        "recurrence": recurrence.name if recurrence else None,
+        "subtasks": []
     }
     tasks.append(task)
-    print("Task added successfully.")
+    print(colorize("Task added successfully.", Fore.GREEN))
 
 def list_tasks(tasks, sort_by=None):
     if not tasks:
-        print("No tasks found.")
+        print(colorize("No tasks found.", Fore.YELLOW))
         return
 
     if sort_by == "due_date":
@@ -61,11 +69,17 @@ def list_tasks(tasks, sort_by=None):
         sorted_tasks = tasks
 
     for i, task in enumerate(sorted_tasks, 1):
-        status = "✓" if task["completed"] else " "
-        due_date = f" (Due: {task['due_date']})" if task['due_date'] else ""
-        priority = f" [Priority: {task['priority']}]" if task['priority'] else ""
-        category = f" #{task['category']}" if task['category'] else ""
+        status = colorize("✓", Fore.GREEN) if task["completed"] else colorize("✗", Fore.RED)
+        due_date = colorize(f" (Due: {task['due_date']})", Fore.CYAN) if task['due_date'] else ""
+        priority_color = Fore.RED if task['priority'] == 'HIGH' else Fore.YELLOW if task['priority'] == 'MEDIUM' else Fore.GREEN
+        priority = colorize(f" [Priority: {task['priority']}]", priority_color) if task['priority'] else ""
+        category = colorize(f" #{task['category']}", Fore.MAGENTA) if task['category'] else ""
         print(f"{i}. [{status}] {task['description']}{due_date}{priority}{category}")
+        
+        if task['subtasks']:
+            for j, subtask in enumerate(task['subtasks'], 1):
+                subtask_status = colorize("✓", Fore.GREEN) if subtask["completed"] else colorize("✗", Fore.RED)
+                print(f"   {i}.{j} [{subtask_status}] {subtask['description']}")
 
 def complete_task(tasks, index):
     undo_stack.append(tasks.copy())
@@ -152,16 +166,40 @@ def search_tasks(tasks, keyword):
             matching_tasks.append((i, task))
     return matching_tasks
 
+def add_subtask(tasks, parent_index, description):
+    undo_stack.append(tasks.copy())
+    if 1 <= parent_index <= len(tasks):
+        subtask = {
+            "description": description,
+            "completed": False
+        }
+        tasks[parent_index-1]["subtasks"].append(subtask)
+        print(colorize("Subtask added successfully.", Fore.GREEN))
+    else:
+        print(colorize("Invalid task number.", Fore.RED))
+
+def complete_subtask(tasks, parent_index, subtask_index):
+    undo_stack.append(tasks.copy())
+    if 1 <= parent_index <= len(tasks):
+        subtasks = tasks[parent_index-1]["subtasks"]
+        if 1 <= subtask_index <= len(subtasks):
+            subtasks[subtask_index-1]["completed"] = True
+            print(colorize("Subtask marked as completed.", Fore.GREEN))
+        else:
+            print(colorize("Invalid subtask number.", Fore.RED))
+    else:
+        print(colorize("Invalid task number.", Fore.RED))
+
 def main():
     tasks = load_tasks()
     
     while True:
         handle_recurring_tasks(tasks)
-        command = input("Enter a command (add/list/complete/delete/edit/details/search/archive/undo/quit): ").lower()
+        command = input(colorize("Enter a command (add/list/complete/delete/edit/details/search/archive/undo/add_subtask/complete_subtask/quit): ", Fore.CYAN)).lower()
         
         if command == "quit":
             save_tasks(tasks)
-            print("Goodbye!")
+            print(colorize("Goodbye!", Fore.YELLOW))
             break
         elif command == "add":
             description = input("Enter task description: ")
@@ -191,24 +229,32 @@ def main():
             keyword = input("Enter keyword to search for: ")
             matching_tasks = search_tasks(tasks, keyword)
             if matching_tasks:
-                print("Matching tasks:")
+                print(colorize("Matching tasks:", Fore.GREEN))
                 for i, task in matching_tasks:
                     print(f"{i}. {task['description']}")
             else:
-                print("No matching tasks found.")
+                print(colorize("No matching tasks found.", Fore.YELLOW))
         elif command == "archive":
             archived_tasks = [task for task in tasks if task['completed']]
             tasks = [task for task in tasks if not task['completed']]
             save_tasks(archived_tasks, 'archived_tasks.json')
-            print(f"{len(archived_tasks)} completed tasks have been archived.")
+            print(colorize(f"{len(archived_tasks)} completed tasks have been archived.", Fore.GREEN))
         elif command == "undo":
             if len(undo_stack) > 0:
                 tasks = undo_stack.pop()
-                print("Last action undone.")
+                print(colorize("Last action undone.", Fore.GREEN))
             else:
-                print("No actions to undo.")
+                print(colorize("No actions to undo.", Fore.YELLOW))
+        elif command == "add_subtask":
+            parent_index = int(input("Enter parent task number: "))
+            description = input("Enter subtask description: ")
+            add_subtask(tasks, parent_index, description)
+        elif command == "complete_subtask":
+            parent_index = int(input("Enter parent task number: "))
+            subtask_index = int(input("Enter subtask number: "))
+            complete_subtask(tasks, parent_index, subtask_index)
         else:
-            print("Invalid command. Please try again.")
+            print(colorize("Invalid command. Please try again.", Fore.RED))
 
 if __name__ == "__main__":
     main()
